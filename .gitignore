@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.ruff_cache/
+.laya/
+laya-backup/
+
+# generated verify reports, child reports, crew artifacts and bg task logs
+.pi/verify/
+.pi/delegate/
+.pi/crew/
+.pi/tasks/

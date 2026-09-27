@@ -1,0 +1,18 @@
+--- a/src/tui/fleet-status.js
++++ b/src/tui/fleet-status.js
+@@ -616,7 +616,14 @@
+             return;
+         }
+         const renderKey = this.getRenderKey();
+-        if (!this.active || renderKey !== this.lastRenderKey)
++        // While the roster is active, render() is the source of truth for coverage:
++        // it republishes on every frame, and the paths that stop publishing clear
++        // coverage themselves. Clearing here on every renderKey change - which
++        // advances about once per second while runs are live - made the sibling async
++        // widget drop its cached lines twice per tick (expanded, then collapsed
++        // again), so the dock changed height twice per tick and Pi's main-screen
++        // renderer escalated to whole-screen repaints.
++        if (!this.active)
+             this.clearWorkflowCoverage();
+         if (!this.widgetRegistered) {
+             ctx.ui.setWidget(FLEET_STATUS_WIDGET_KEY, (tui, theme) => {

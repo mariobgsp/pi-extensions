@@ -1,0 +1,10 @@
+{
+  "name": "browser-auto",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Autonomous browser thin-client: ~11 tools backed by a persistent Python HTTP daemon (Playwright default, nodriver stub).",
+  "type": "module",
+  "pi": {
+    "extensions": ["./index.ts"]
+  }
+}
