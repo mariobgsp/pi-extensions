@@ -9,7 +9,7 @@ Source of truth for the pi coding-agent extensions loaded on this machine.
 | --- | --- | --- |
 | `crew-verify.ts` | yes | `crew_verify` tool: runs a project's own checks (unit, api, ui, visual), returns a PASS/FAIL/SKIP matrix, writes `.pi/verify/latest.json` |
 | `ui_probe.py` | helper of `crew-verify.ts` | Playwright probe: routes, console errors, overflow, screenshots for the ui/visual dimensions |
-| `delegate.ts` | yes | `delegate` tool: resolves a thinking level from the goal and prints the exact background-subagent call to run |
+| `delegate.ts` | yes | `delegate` tool: prints the exact background-subagent call for a read-heavy goal — fresh child context, model suffix for the thinking level, no report file |
 | `token-rate.ts` | yes | token rate / pricing helpers |
 | `token-ledger.ts` | yes | per-session token usage ledger |
 | `herdr-agent-state.ts` | yes | Herdr pane/agent state |

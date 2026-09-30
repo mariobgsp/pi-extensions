@@ -1,76 +1,43 @@
 /**
- * delegate — one background subagent per task, thinking level assigned by the
- * dispatcher instead of by the caller.
+ * delegate — build the one background subagent call for a read-heavy goal.
  *
- * Why this exists: the old fixed crew ran up to seven children in waves. Each
- * wave was a barrier, so wall-clock time was the sum of every role's slowest
- * child, and each child re-derived context the previous one had just read. One
+ * Why this exists: the old fixed crew ran up to seven children in waves. Every
+ * wave was a barrier, so wall-clock time was the sum of each role's slowest
+ * child, and each child re-derived context the one before it had just read. One
  * child with the main agent's own tools does the same work without the barriers.
+ *
+ * Why it is this small: a child pays a fixed floor the parent never pays — its
+ * own system prompt, its tool definitions, its task text — and pays that floor
+ * again on every turn it takes. Inline work pays nothing extra; it just grows
+ * the parent's context permanently. So the floor is only worth paying for
+ * read-heavy work, and this tool emits a call and nothing else: no report file,
+ * no directory, no level heuristic. The parent writes the goal, the facts and
+ * the level.
+ *
+ * `context: "fresh"` is the token decision. The child starts with no view of
+ * this conversation, which is why `facts` is a parameter and not a courtesy:
+ * what the child cannot infer, the parent writes down. An empty facts means the
+ * child works blind and says so in Summary.concerns.
  *
  * The subagent tool ignores its own `thinking` parameter on dispatch
  * (pi-subagents src/extension/schemas.js:293 — "Dispatch ignores this; use model
- * suffix"), so the level is carried as a model suffix instead. That is read back
- * as the real level from the run record, e.g. "space-bunny-free · thinking
- * minimal", and it beats the agent's frontmatter because
- * resolveEffectiveThinking (src/shared/model-info.js:21) checks the suffix first.
+ * suffix"), so the level rides as a model suffix and resolveEffectiveThinking
+ * (src/shared/model-info.js:21) reads it ahead of the agent's frontmatter.
  *
- * ExtensionContext has no callTool, so this tool cannot launch the child itself.
- * It resolves the level, the model string, the report path and the task text,
- * activates the subagent tool if it is not active yet, and returns the exact
- * call to run. One call, unedited.
+ * ExtensionContext has no callTool, so this tool cannot launch the child. It
+ * resolves the model string and the task text and returns the exact call to run,
+ * unedited.
  *
- * async: true is not a style choice, it is what makes `tools: inherit` work at
- * all: a foreground child never loads the parent's ambient extensions, so the
- * agent resolves to a child with no tools and says so on stderr. Never hand this
- * call to anyone with async: false.
+ * async: true is what makes `tools: inherit` work at all: a foreground child
+ * never loads the parent's ambient extensions, so the agent resolves to a child
+ * with no tools and says so on stderr. Never hand this call to async: false.
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { mkdirSync } from "node:fs";
-import { join, resolve } from "node:path";
 
-const PI_DIR = ".pi";
-const REPORT_DIR = "delegate";
 const CHILD_AGENT = "delegate";
 const SUBAGENT_TOOL = "subagent";
-
-const LEVELS = ["minimal", "low", "medium", "high", "xhigh", "max"] as const;
-type Level = (typeof LEVELS)[number];
-
-// Checked in order; the first bucket with a word-boundary hit wins. A goal that
-// matches nothing gets the baseline, because guessing a task is cheap is how you
-// hand the model harder work than you thought you were.
-const MINIMAL_HINTS = ["typo", "rename", "comment", "wording", "spelling", "docstring"];
-const LOW_HINTS = ["docs", "readme", "one-file", "single-file", "cleanup", "whitespace"];
-const HIGH_HINTS = ["auth", "login", "password", "token", "secret", "credential", "db",
- "database", "migration", "schema", "billing", "payment", "money", "concurrency", "race",
- "security", "crypto", "encryption"];
-
-// xhigh and max are deliberately unreachable from the heuristic. They cost real
-// money per turn and belong to a decision someone makes on purpose.
-// HIGH is checked first and wins outright, so "add a comment explaining the auth
-// flow" still costs high. That overpays on a rare combination; the alternative
-// ordering underpays on every risky fix that happens to contain a cheap word,
-// and underpaying is the failure that costs quality rather than money.
-const HINT_BUCKETS: { level: Exclude<Level, "xhigh" | "max">; hints: string[] }[] = [
- { level: "high", hints: HIGH_HINTS },
- { level: "minimal", hints: MINIMAL_HINTS },
- { level: "low", hints: LOW_HINTS },
-];
-// Medium is the baseline, so there is no medium bucket: it is what you get when
-// nothing matches. Risk words raise the level, cheap-action words lower it.
-const BASELINE: Exclude<Level, "xhigh" | "max"> = "medium";
-
-// Built once: the tool is called often enough that rebuilding eight regexes per
-// call is noise, and a global regex would carry lastIndex between calls.
-for (const bucket of HINT_BUCKETS)
- (bucket as any).compiled = bucket.hints.map((hint) => ({ hint, re: new RegExp(`\\b${hint}\\b`, "i") }));
-
-function levelFor(goal: string): { level: Level; levelSource: "heuristic"; hint?: string } {
- for (const bucket of HINT_BUCKETS)
-  for (const { hint, re } of bucket.compiled) if (re.test(goal)) return { level: bucket.level, levelSource: "heuristic", hint };
- return { level: BASELINE, levelSource: "heuristic" };
-}
+const DEFAULT_LEVEL = "medium";
 
 /** "provider/id" from whatever shape the context hands us, with any suffix removed. */
 function modelIdOf(model: any): string | null {
@@ -82,35 +49,25 @@ function modelIdOf(model: any): string | null {
  return id.includes("/") ? id : null;
 }
 
-function withLevel(modelId: string, level: Level): string {
- return `${modelId}:${level}`;
-}
-
-function stamp(d = new Date()): string {
- const p = (n: number) => String(n).padStart(2, "0");
- return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`;
-}
-
-function slug(goal: string): string {
- return (
-  goal.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40).replace(/-+$/, "") ||
-  "task"
- );
-}
-
 export default function (pi: ExtensionAPI) {
  pi.registerTool({
   name: "delegate",
   label: "Delegate",
   description:
-   "Hand one non-trivial goal to a single background subagent that has the same tools you do, and pick its thinking level. Use it for a real task (multi-file change, feature, investigation, refactor) — not for a greeting, a one-line answer, or a single obvious edit. Levels: minimal|low|medium|high|xhigh|max. Omit thinking and the level comes from the goal: medium, unless a risk word (auth, db, payment, security, concurrency, …) raises it to high or a cheap-action word (typo, rename, docs, one-file, …) lowers it to low or minimal. Returns the exact subagent call to run, unedited.",
+   "Hand one read-heavy goal to a background subagent and get back the exact call to run. Use it when the work needs many files read, a large diff, or a parallel investigation. Do not use it for a greeting, a one-line answer, or a single obvious edit — those are cheaper inline, and inline is the default. The child starts in a fresh context with no view of this conversation, so facts carries what it cannot infer on its own. thinking defaults to medium: minimal for trivial work, high for auth, db, payment, security, migration, concurrency or crypto, xhigh and max only when you mean it. Returns the exact subagent call, unedited.",
   parameters: Type.Object({
-   goal: Type.String({ description: "One-sentence task goal (required)" }),
+   goal: Type.String({ description: "One-sentence task goal (required)." }),
+   facts: Type.Optional(
+    Type.String({
+     description:
+      "What the child cannot infer by itself: files already located, decisions already made, conventions already observed. The child sees only its goal and these facts.",
+    }),
+   ),
    thinking: Type.Optional(
     Type.Union(
      [Type.Literal("minimal"), Type.Literal("low"), Type.Literal("medium"),
       Type.Literal("high"), Type.Literal("xhigh"), Type.Literal("max")],
-     { description: "Thinking level for the child. Omit to derive it from the goal." },
+     { description: "Child thinking level, carried as a model suffix. Defaults to medium." },
     ),
    ),
   }),
@@ -119,11 +76,8 @@ export default function (pi: ExtensionAPI) {
    if (!goal)
     return { content: [{ type: "text", text: "delegate needs a goal." }], details: { error: "no-goal" } };
 
-   const chosen = params.thinking as Level | undefined;
-   const derived = levelFor(goal);
-   const level = chosen ?? derived.level;
-   const levelSource = chosen ? "explicit" : "heuristic";
-   const matched = chosen ? null : (derived.hint ?? null);
+   const level = String(params.thinking ?? DEFAULT_LEVEL);
+   const facts = String(params.facts ?? "").trim();
 
    const modelId = modelIdOf((ctx as any)?.model);
    if (!modelId)
@@ -132,16 +86,11 @@ export default function (pi: ExtensionAPI) {
      details: { error: "no-model", level },
     };
 
-   const root = resolve(String((ctx as any)?.cwd ?? process.cwd()));
-   const dir = join(root, PI_DIR, REPORT_DIR);
-   try {
-    mkdirSync(dir, { recursive: true });
-   } catch {
-    // the child reports the write failure itself if the directory is not usable
-   }
-   const reportPath = join(dir, `${stamp()}-${slug(goal)}.md`);
-   const model = withLevel(modelId, level);
-   const task = `GOAL: ${goal}\n\nWrite your report to exactly ${reportPath}.\nEnd your final message with a 5-line summary.`;
+   const task = [
+    `GOAL: ${goal}`,
+    `FACTS: ${facts || "(none given — read the files before assuming anything)"}`,
+    "Return the Summary object. No report file.",
+   ].join("\n");
 
    // The subagent tool ships inactive. Run what we return and it has to exist.
    let activated = false;
@@ -151,23 +100,20 @@ export default function (pi: ExtensionAPI) {
      activated = true;
     }
    } catch {
-    // if this fails the run line below is still correct, just not yet callable
+    // if this fails the call below is still correct, just not yet callable
    }
 
-   const call = `subagent { agent: ${JSON.stringify(CHILD_AGENT)}, task: ${JSON.stringify(task)}, model: ${JSON.stringify(model)}, async: true }`;
+   const model = `${modelId}:${level}`;
+   const call = `subagent { agent: ${JSON.stringify(CHILD_AGENT)}, task: ${JSON.stringify(task)}, model: ${JSON.stringify(model)}, context: "fresh", async: true }`;
    const text = [
     `delegate: ${JSON.stringify(goal)}`,
-    `thinking: ${level} (${levelSource}${matched ? `, matched "${matched}"` : ""}) — carries as model ${model}`,
-    `report: ${reportPath}`,
+    `thinking: ${level} — carries as model ${model}`,
     ...(activated ? ["activated the subagent tool; it is live on your next request."] : []),
     "Run exactly this, unedited — the child runs in the background and its completion lands in this conversation:",
     `  ${call}`,
    ].join("\n");
 
-   return {
-    content: [{ type: "text", text }],
-    details: { goal, level, levelSource, matched, model, reportPath, call },
-   };
+   return { content: [{ type: "text", text }], details: { goal, facts, level, model, task, call } };
   },
  });
 }
