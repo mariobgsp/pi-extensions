@@ -50,7 +50,30 @@ function modelIdOf(model: any): string | null {
 }
 
 export default function (pi: ExtensionAPI) {
- pi.registerTool({
+  // Activate `subagent` before the FIRST request, not on first use. Tool
+  // definitions are serialized before the messages, so adding one mid-session
+  // invalidates the entire cached prefix — measured at +18,385 chars of tool
+  // schema on a session's first delegation. Registering it up front costs those
+  // same tokens on every request instead, but as a cached read (~10x cheaper,
+  // and no re-read): the cheaper side for any session longer than ~17 turns.
+  //
+  // It runs in `before_agent_start`, NOT at load: `setActiveTools` ignores names
+  // that are not registered yet (docs/extensions.md:184), and `subagent` belongs
+  // to pi-subagents, which may load after this extension. The hook fires once
+  // all extensions are registered and before any request goes out, and the
+  // guard makes it a no-op on every turn after the first.
+  const activateSubagent = (): void => {
+    try {
+      if (!pi.getActiveTools().includes(SUBAGENT_TOOL)) {
+        pi.setActiveTools([...pi.getActiveTools(), SUBAGENT_TOOL]);
+      }
+    } catch {
+      // no active-tool API here: the run() path below still activates on demand
+    }
+  };
+  pi.on("before_agent_start", activateSubagent);
+
+  pi.registerTool({
   name: "delegate",
   label: "Delegate",
   description:
