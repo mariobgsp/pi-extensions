@@ -1,61 +1,121 @@
 # pi-extensions
 
-Source of truth for the pi coding-agent extensions loaded on this machine.
-`~/.pi/agent/extensions/` is a symlink farm into this repo — edit here, not there.
+Everything user-scope that makes this machine's pi behave the way it does: the operating
+spec, the extensions, the skills, the prompts, the theme, the MCP servers, and the package
+set. Clone it on a fresh machine, run `./install.sh`, and the agent that comes up is the
+same one — same tools, same gates, same instruction file.
 
-## What is here
+Written against **pi 1.5.2** (`@earendil-works/pi-coding-agent`). Extension APIs move; if a
+newer pi rejects a file here, check it against `docs/extensions.md` in the pi version you
+are on.
 
-| Path | Loaded by pi | What it does |
+## Layout
+
+| In this repo | Installed to | What it is |
 | --- | --- | --- |
-| `crew-verify.ts` | yes | `crew_verify` tool: runs a project's own checks (unit, api, ui, visual), returns a PASS/FAIL/SKIP matrix, writes `.pi/verify/latest.json` |
-| `ui_probe.py` | helper of `crew-verify.ts` | Playwright probe: routes, console errors, overflow, screenshots for the ui/visual dimensions |
-| `delegate.ts` | yes | `delegate` tool: prints the exact background-subagent call for a read-heavy goal — fresh child context, model suffix for the thinking level, no report file |
-| `token-rate.ts` | yes | token rate / pricing helpers |
-| `token-ledger.ts` | yes | per-session token usage ledger |
-| `herdr-agent-state.ts` | yes | Herdr pane/agent state |
-| `browser-auto/` | yes | autonomous browser thin-client (Node index + Python server/engines) |
-| `vision-handoff.ts` | no | vision-model handoff helper, imported by nothing yet |
-| `.pi/verify.json` | config | per-project verify config (`start`, dimension commands, `visual.uploadOk`) |
-| `SELFTEST.md`, `VERIFY.md` | no | raw evidence and design notes for the verify gate |
-| `upstream-reports/` | no | upstream pi-subagents reports and a patch |
+| `agent/AGENTS.md` | `~/.pi/agent/AGENTS.md` | Operating spec: role, values, safety line, refusal handling, reasoning procedure, response quality |
+| `agent/settings.json` | merged into `~/.pi/agent/settings.json` | Package set, default provider/model/thinking level |
+| `agent/mcp.json` | `~/.pi/agent/mcp.json` | `browser` (Playwright MCP over CDP :9222) and `rea` MCP servers |
+| `agent/extensions/` | `~/.pi/agent/extensions/` | The seven extensions below |
+| `agent/skills/` | `~/.pi/agent/skills/` | Pi-only skills (`memory`, `sinthink`, `obsidian-markdown`, `obsidian-bases`) |
+| `agent/prompts/` | `~/.pi/agent/prompts/` | `/plan` and `/plan-approve` templates |
+| `agent/themes/` | `~/.pi/agent/themes/` | `omarchy-system` theme |
+| `agent/npm/package-lock.json` | reference only | Exact extension versions on the machine this was captured from |
+| `skills/` | `~/.agents/skills/` | The ambient skill library — vendored snapshots, see [Skills](#skills) |
+| `git-hooks/prepare-commit-msg` | `~/.config/git/hooks/` + `core.hooksPath` | Strips AI-agent attribution trailers from commit messages, every repo |
+| `legacy/` | — | Extensions that are no longer loaded, kept for reference |
+| `checks/` | — | Proves the install reproduces the layout |
 
-`caveman-native.js` is **not** here: it is generated into `~/.pi/agent/extensions/` by
-`caveman enable pi` and hardcodes a local node path, so it stays a real file.
+### Extensions
+
+| File | What it does |
+| --- | --- |
+| `dsh-plan.ts` | `/plan` enters plan mode and blocks mutations at `tool_call` (including inside codemode scripts). `/plan-approve` is the only way out — the model cannot approve its own plan |
+| `dsh-parity.ts` | dsh's loop guards: per-tool operational rules, final-answer file-reference contract, oversized tool-result pruning, repeated-tool-call reminders |
+| `dsh-accuracy.ts` | Read-before-edit enforcement, nested `AGENTS.md` injection, clock refresh as a durable message, `todo_write` |
+| `dsh-accuracy/lib.ts`, `dsh-parity/lib.ts` | Shared helpers, each with a `selftest.mts` beside it |
+| `sinthink.ts` | `sinthink` tool: A/E/R · C/V/N plan validation, save, status, and plan-vs-tree check |
+| `memory-doctor.ts` | Memory vault lint on health, `/memory` report, daily-note graph link on settle, consolidation nudge |
+| `herdr-agent-state.ts` | Herdr pane/agent state over its socket |
+| `tps.ts` | Live tokens/s and TTFT in the status bar |
+
+### Extension packages
+
+Installed by pi from `agent/settings.json` on first start:
+
+| Package | What it adds |
+| --- | --- |
+| `pi-lens` | LSP diagnostics, ast-grep search/replace, source checks |
+| `pi-subagents` | `subagent`, workflows, council mode |
+| `pi-web-access` | `web_search`, `fetch_content`, `source_check` |
+| `pi-memory` | `memory_*` tools and the `~/brain` vault |
+| `pi-background-tasks` | `bg_run`, `bg_status`, `bg_logs`, delegation |
+| `@dietrichgebert/ponytail` | The lazy-senior-dev behaviour rules |
 
 ## Install
 
 ```sh
+curl -fsSL https://pi.dev/install.sh | sh          # pi itself
 git clone https://github.com/mariobgsp/pi-extensions ~/Projects/pi-extensions
-cd ~/.pi/agent/extensions
-for f in crew-verify.ts delegate.ts herdr-agent-state.ts token-rate.ts token-ledger.ts browser-auto; do
-  [ -e "$f" ] && rm -rf "$f"
-  ln -s ~/Projects/pi-extensions/"$f" "$f"
-done
+~/Projects/pi-extensions/install.sh
+pi                                                 # installs the npm packages on start
 ```
 
-A user agent under `~/.pi/agent/agents/` must not set `tools: inherit` — `tools` is a strict
-allowlist, so the child asks for a tool literally named `inherit` and the run fails. Omit
-`tools:` to get the default set.
+Then authenticate what needs it — `pi login` for the provider, `gh auth login` for the
+GitHub tooling. `install.sh` is idempotent; re-run it after every pull. Real files it finds
+in the way are moved aside to `<path>.pre-kit-<timestamp>`, never deleted.
 
-## Verifying a project
+`mcp.json` points the browser server at an existing Chromium started with
+`--remote-debugging-port=9222`; start one or drop that server.
 
-`crew_verify` executes; the policy (when to run it, what counts as evidence, the 3-cycle cap)
-lives in `~/.pi/agent/AGENT.md` §5.
+### Pinning the exact package versions
+
+`agent/npm/package-lock.json` is the lockfile from the machine this kit was captured on. The
+settings list is unpinned, so a fresh install takes current releases. For the exact versions:
 
 ```sh
-crew_verify {project_root: <path>}     # matrix over unit, api, ui, visual + nextActions
+cd ~/.pi/agent/npm && npm ci
 ```
 
-Missing evidence is never a pass: no test script, no browser, no vision model, or an unreachable
-URL means SKIP or FAIL. A dimension passes only when every check ran and passed, and any WARN
-blocks PASS. The tool never blocks the session. Configure the run in `<project>/.pi/verify.json`
-(`start` command, dimension commands, `visual.uploadOk`); the old `"gate": true` key is inert —
-the automatic per-turn rule and end-of-turn warning were removed.
+## What this repo cannot carry
 
-## Checks
+Not configuration, so not here:
+
+- `auth.json`, `models-store.json`, and the settings bookkeeping keys (`lastChangelogVersion`,
+  `extensionChangelogVersions`) — credentials and per-machine state.
+- `sessions/` — conversation history.
+- The memory vault itself (`~/brain`, `~/.pi/agent/memory`) — content, not tooling. The
+  `memory` skill and `memory-doctor` extension that read it are here.
+- `~/.pi/agent/sinthink/*.json` — per-feature plans, which belong to their projects.
+- Per-project `.pi/` settings and project skills.
+- `node_modules` (262 MB) — reinstalled by pi.
+
+## Skills
+
+`agent/skills/` are pi-only and shadow the ambient copies of the same name. `skills/` is the
+ambient library pi reads from `~/.agents/skills/`; those are **vendored snapshots** of
+upstream packs (mattpocock-skills, the remotion skills, caveman, fframes,
+reverse-engineer-anything, …), not forks. When an upstream pack changes, refresh it from its
+source rather than editing the copy here.
+
+`omarchy-app` is not vendored: it ships with Omarchy at
+`/usr/share/omarchy/default/agents/skills/omarchy-app`, and `install.sh` links it when that
+directory exists.
+
+## Gotchas
+
+- A user agent under `~/.pi/agent/agents/` must not set `tools: inherit` — `tools` is a strict
+  allowlist, so the child asks for a tool literally named `inherit` and the run fails. Omit
+  `tools:` for the default set.
+- `herdr-agent-state.ts` is generated by herdr. Reinstalling or updating herdr overwrites it,
+  which breaks the symlink; re-run `install.sh` afterwards.
+
+## Verify
 
 ```sh
-cd ~/.pi/agent
-NODE_PATH=~/.pi/agent/npm/node_modules bun tests/crew-verify.check.ts
-NODE_PATH=~/.pi/agent/npm/node_modules bun tests/delegate.check.ts
+./checks/install-layout.sh
 ```
+
+Installs into a temp directory, then asserts every managed path links back to this repo, that
+`settings.json` kept its packages and defaults, and that a second run adds no duplicate
+package. Prints `PASS` or the exact failing path.

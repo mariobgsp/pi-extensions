@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Strip AI-agent attribution from commit messages.
+# Global (core.hooksPath=~/.config/git/hooks), so it covers every repo and
+# every agent: Claude Code, Codex, Copilot, Devin, CommandCode, remote-box,
+# and anything installed later.
+#
+# Removes only lines that name a known AI sender. Human co-authors,
+# Signed-off-by/DCO trailers, and normal prose are left untouched.
+set -euo pipefail
+
+msg=${1:-}
+src=${2:-message}
+
+[ -n "$msg" ] && [ -f "$msg" ] || exit 0
+
+# git-generated messages (merge/squash) are not the agent's to rewrite.
+case "$src" in
+  merge | squash) exit 0 ;;
+esac
+
+# Trailers whose value identifies an AI agent or bot.
+sed -i -E '
+  /^(Co-authored-by|Assisted-by|Generated-by|Generated-with|Reviewed-by|Helped-by)[ \t]*:/ {
+    /[Cc]laude|[Cc]odex|[Cc]opilot|[Dd]evin|[Gg]emini|[Cc]h[Gg]PT|[Oo]pen[Aa][Ii]|[Cc]ommand[Cc]ode|[Rr]emote.?[Bb]ox|noreply@|anthropic\.com|openai\.com|commandcode\.ai|aihero\.dev|agent@|\[bot\]|A[Ii][ _-]?(agent|assistant|model|bot)/d
+  }
+' "$msg"
+
+# Codex writes a prose footer instead of a trailer.
+sed -i -E '/^Generated (with|by)[ \t]+\[?(Claude|Codex|Copilot|Devin|Gemini|ChatGPT|OpenAI|GitHub Copilot|an? AI|AI\b)/d' "$msg"
+
+exit 0
