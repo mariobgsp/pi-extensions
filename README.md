@@ -63,7 +63,8 @@ pi                                                 # installs the npm packages o
 
 Then authenticate what needs it — `pi login` for the provider, `gh auth login` for the
 GitHub tooling. `install.sh` is idempotent; re-run it after every pull. Real files it finds
-in the way are moved aside to `<path>.pre-kit-<timestamp>`, never deleted.
+in the way are moved to `~/.pi/kit-backups/<timestamp>/<original path>`, never deleted and
+never left inside a directory pi loads from.
 
 `mcp.json` points the browser server at an existing Chromium started with
 `--remote-debugging-port=9222`; start one or drop that server.

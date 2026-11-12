@@ -11,15 +11,18 @@ repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 pi_home=${PI_HOME:-$HOME/.pi/agent}
 ambient=${AGENTS_SKILLS_HOME:-$HOME/.agents/skills}
 git_hooks=${GIT_HOOKS_HOME:-$HOME/.config/git/hooks}
+backup_root=${PI_BACKUP_DIR:-$HOME/.pi/kit-backups}
 stamp=$(date +%Y%m%d-%H%M%S)
 
-# Link src at dst. Anything real already there is moved aside, never deleted.
+# Link src at dst. Anything real already there is moved out of the loaded tree, never deleted.
 link() {
-  local src=$1 dst=$2
+  local src=$1 dst=$2 alt
   mkdir -p -- "$(dirname -- "$dst")"
   if [ -e "$dst" ] && [ ! -L "$dst" ]; then
-    mv -- "$dst" "$dst.pre-kit-$stamp"
-    printf 'moved aside: %s -> %s\n' "$dst" "$dst.pre-kit-$stamp"
+    alt="$backup_root/$stamp$dst"
+    mkdir -p -- "$(dirname -- "$alt")"
+    mv -- "$dst" "$alt"
+    printf 'moved aside: %s -> %s\n' "$dst" "$alt"
   fi
   ln -sfn -- "$src" "$dst"
 }
