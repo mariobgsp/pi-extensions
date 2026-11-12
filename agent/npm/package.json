@@ -1,0 +1,12 @@
+{
+  "name": "pi-extensions",
+  "private": true,
+  "dependencies": {
+    "@dietrichgebert/ponytail": "^5.3.3",
+    "pi-background-tasks": "^2.6.10",
+    "pi-lens": "^4.4.10",
+    "pi-memory": "^0.4.2",
+    "pi-subagents": "^0.87.0",
+    "pi-web-access": "^0.47.0"
+  }
+}
