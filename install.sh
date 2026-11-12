@@ -63,7 +63,8 @@ else
 fi
 
 link "$repo/git-hooks/prepare-commit-msg" "$git_hooks/prepare-commit-msg"
-if [ "$(git config --global core.hooksPath || true)" != "$git_hooks" ]; then
+# Only claim the global hook path when nothing else has: never clobber a deliberate choice.
+if [ -z "$(git config --global core.hooksPath || true)" ]; then
   git config --global core.hooksPath "$git_hooks"
 fi
 

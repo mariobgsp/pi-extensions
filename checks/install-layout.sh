@@ -7,6 +7,9 @@ repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
+# The real machine's global hook path must survive a test install.
+before_hooks=$(git config --global core.hooksPath || true)
+
 PI_HOME=$tmp/pi AGENTS_SKILLS_HOME=$tmp/agents/skills GIT_HOOKS_HOME=$tmp/hooks \
   "$repo/install.sh" >/dev/null || { echo "FAIL: install.sh exited non-zero"; exit 1; }
 
@@ -43,6 +46,11 @@ PI_HOME=$tmp/pi AGENTS_SKILLS_HOME=$tmp/agents/skills GIT_HOOKS_HOME=$tmp/hooks 
   "$repo/install.sh" >/dev/null || { echo "FAIL: second run exited non-zero"; exit 1; }
 dupes=$(node -e 'const s=require(process.argv[1]);const p=s.packages;console.log(p.length-new Set(p).size)' "$tmp/pi/settings.json")
 [ "$dupes" = 0 ] || { echo "FAIL: $dupes duplicate package(s) after re-run"; fail=1; }
+
+after_hooks=$(git config --global core.hooksPath || true)
+if [ "$before_hooks" != "$after_hooks" ]; then
+  echo "FAIL: install changed global core.hooksPath ($before_hooks -> $after_hooks)"; fail=1
+fi
 
 if [ "$fail" = 0 ]; then echo "PASS: kit layout reproduced in $tmp"; fi
 exit "$fail"
