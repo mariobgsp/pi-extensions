@@ -1,5 +1,7 @@
 __pycache__/
 *.pyc
+# built by install.sh, never vendored
+.venv/
 .ruff_cache/
 .laya/
 laya-backup/

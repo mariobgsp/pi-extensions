@@ -30,7 +30,7 @@ link() {
 link "$repo/agent/AGENTS.md" "$pi_home/AGENTS.md"
 link "$repo/agent/mcp.json" "$pi_home/mcp.json"
 
-for dir in extensions skills prompts themes; do
+for dir in extensions skills themes; do
   for src in "$repo/agent/$dir"/*; do
     if [ -e "$src" ]; then link "$src" "$pi_home/$dir/${src##*/}"; fi
   done
@@ -39,6 +39,16 @@ done
 for src in "$repo/skills"/*; do
   if [ -e "$src" ]; then link "$src" "$ambient/${src##*/}"; fi
 done
+
+# webapp-testing ships without its virtualenv; its SKILL.md names that interpreter
+# as the runtime, so a machine without it cannot run the skill.
+venv="$pi_home/skills/webapp-testing/.venv"
+if [ "${SKIP_VENV:-0}" != 1 ] && [ ! -x "$venv/bin/python" ] && command -v python3 >/dev/null 2>&1; then
+  printf 'building %s (playwright + chromium, ~1 GB)\n' "$venv"
+  python3 -m venv "$venv"
+  "$venv/bin/pip" install -q playwright
+  "$venv/bin/playwright" install chromium
+fi
 
 # pi writes settings.json itself, so merge the kit's keys into it instead of linking.
 if command -v node >/dev/null 2>&1; then

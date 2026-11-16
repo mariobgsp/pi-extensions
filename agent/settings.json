@@ -1,5 +1,8 @@
 {
-  "lastChangelogVersion": "1.5.2",
+  "defaultProvider": "opencode-go",
+  "defaultModel": "deepseek-v4.1-flash",
+  "defaultThinkingLevel": "max",
+  "hideThinkingBlock": false,
   "packages": [
     "npm:pi-lens",
     "npm:@dietrichgebert/ponytail",
@@ -7,15 +10,5 @@
     "npm:pi-memory",
     "npm:pi-subagents",
     "npm:pi-background-tasks"
-  ],
-  "hideThinkingBlock": false,
-  "defaultProvider": "opencode-go",
-  "defaultModel": "deepseek-v4.1-flash",
-  "defaultThinkingLevel": "max",
-  "extensionChangelogVersions": {
-    "{\"source\":\"npm:pi-lens\",\"scope\":\"user\"}": "4.4.10",
-    "{\"source\":\"npm:pi-web-access\",\"scope\":\"user\"}": "0.47.0",
-    "{\"source\":\"npm:pi-memory\",\"scope\":\"user\"}": "0.4.2",
-    "{\"source\":\"npm:pi-subagents\",\"scope\":\"user\"}": "0.87.0"
-  }
+  ]
 }
