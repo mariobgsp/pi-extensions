@@ -1,9 +1,9 @@
 ---
 name: sinthink
-description: Build by graph, the Pi way — four modes (design thinking, design code, design graph, design surface), A/E/R on the code side and C/V/N on the interface side, plus the eleven-question gate. Uses the sinthink tool for template, save, status and check. Use when a feature spans more than a few files, when a change adds a state or an error path, or when the user asks to sinthink, plan a feature, or make the interface and the code agree.
+description: Build by graph, the Pi way — four modes (design thinking, design code, design graph, design surface), A/E/R on the code side and C/V/N on the interface side, the eleven-question gate, and plan mode (`/plan` → `/plan-approve`). Uses the sinthink tool for template, save, status and check. Use when a feature spans more than a few files, when a change adds a state or an error path, or when the user asks to sinthink, plan a feature, or make the interface and the code agree.
 ---
 
-# Sinthink (Pi)
+# Sinthink
 
 **The code is the graph. The surface is the same graph, seen from the other side.**
 
@@ -11,7 +11,7 @@ Two channels per node on the code side: **A** what flows through it, **E** every
 
 A channel you did not enumerate is a defect review will not catch, because nobody wrote it down.
 
-(This is the Pi copy. The portable skill at `~/.agents/skills/sinthink` is the shared one; this file adds the modes, the gate and the tool whose paths only exist in Pi.)
+This skill lives in `~/.pi/agent/skills/` only: it names the `sinthink` tool, the four modes, the gate, and plan mode, which exist only in Pi. Do not re-vendor it into `~/.agents/skills/`; pi would then load one copy and skip the other.
 
 ## When this is worth it
 
@@ -33,6 +33,20 @@ One discipline, four registers. Name the mode you are in; each ends when its que
 | Design surface | interface, mechanically | slots, tree, variants, needs, focus, and the state the design forgot | C V N |
 
 Thinking decides the graph. Code proves the graph is in the file. Graph decides the surface. Surface proves the surface is in the component.
+
+## Plan mode
+
+`/plan [task]` enters plan mode: read-only investigation, edits and mutating shell blocked at the tool call, and only `/plan-approve` gets out. Conversational agreement approves nothing — fold the confirmed decision into the plan and present it again.
+
+In plan mode the reply is the deliverable. Structure it:
+
+1. **Observe** — the code the task touches, and every caller, test, fixture and config it affects.
+2. **Research** — what the codebase, the standard library, installed dependencies and the platform already provide.
+3. **Options** — viable approaches with their tradeoffs: size, risk, correctness, edge cases.
+4. **Gaps** — what is missing, what could break, what you could not verify.
+5. **Recommendation** — the smallest change that fully solves the task, naming exactly the files, callers, tests, fixtures and config it touches.
+
+When the change adds a state or an error path, the prose plan and the sinthink plan are the same plan: save it with `sinthink action=save`, answer the gate, and let `action=check` prove the code against it after approval. End with an APPROVED checkpoint — one line naming the recommended change, and the note that nothing is implemented until the user runs `/plan-approve`.
 
 ## The plan
 

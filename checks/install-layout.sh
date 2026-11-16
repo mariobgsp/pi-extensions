@@ -7,9 +7,11 @@ repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
-# The real machine's global hook path must survive a test install.
+# The real machine's global hook path must survive a test install. SKIP_VENV keeps
+# the test from building a 1 GB playwright env that already lives in the repo.
 before_hooks=$(git config --global core.hooksPath || true)
 
+export SKIP_VENV=1
 PI_HOME=$tmp/pi AGENTS_SKILLS_HOME=$tmp/agents/skills GIT_HOOKS_HOME=$tmp/hooks \
   "$repo/install.sh" >/dev/null || { echo "FAIL: install.sh exited non-zero"; exit 1; }
 
@@ -24,10 +26,14 @@ expect_link() {
 
 expect_link "$repo/agent/AGENTS.md" "$tmp/pi/AGENTS.md"
 expect_link "$repo/agent/mcp.json" "$tmp/pi/mcp.json"
-for dir in extensions skills prompts themes; do
-  for src in "$repo/agent/$dir"/*; do expect_link "$src" "$tmp/pi/$dir/${src##*/}"; done
+for dir in extensions skills themes; do
+  for src in "$repo/agent/$dir"/*; do
+    if [ -e "$src" ]; then expect_link "$src" "$tmp/pi/$dir/${src##*/}"; fi
+  done
 done
-for src in "$repo/skills"/*; do expect_link "$src" "$tmp/agents/skills/${src##*/}"; done
+for src in "$repo/skills"/*; do
+  if [ -e "$src" ]; then expect_link "$src" "$tmp/agents/skills/${src##*/}"; fi
+done
 expect_link "$repo/git-hooks/prepare-commit-msg" "$tmp/hooks/prepare-commit-msg"
 
 # settings.json is merged, not linked: packages must survive verbatim.
